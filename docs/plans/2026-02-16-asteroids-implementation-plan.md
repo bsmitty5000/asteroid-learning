@@ -1,1360 +1,309 @@
 # Asteroids Game Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Build a browser-based Asteroids clone using Phaser 3 + TypeScript + Vite, with vector-style graphics and clean extensible architecture.
 
 **Architecture:** Scene-based with game object classes. Four scenes (Boot, Menu, Game, GameOver) orchestrate gameplay. Three entity classes (Ship, Asteroid, Bullet) extend Phaser.GameObjects.Container and own their own behavior. Manual velocity physics for movement, Phaser physics only for collision detection.
 
 **Tech Stack:** Phaser 3.90, TypeScript 5, Vite 6, Vitest for unit testing
 
-**Testing strategy:** Game logic (vector math, screen wrapping, asteroid splitting, config) is extracted into pure functions and unit tested with Vitest. Visual rendering and scene integration are verified manually in the browser. We do NOT mock Phaser objects — we isolate logic away from Phaser instead.
+**Testing strategy:** Game logic (vector math, screen wrapping, config) is extracted into pure functions and unit tested with Vitest. Visual rendering and scene integration are verified manually in the browser. We do NOT mock Phaser objects — we isolate logic away from Phaser instead.
 
 **Reference:** See `docs/plans/2026-02-16-asteroids-game-design.md` for full design rationale.
 
----
-
-### Task 1: Project Scaffolding
-
-**Files:**
-- Create: `package.json`
-- Create: `tsconfig.json`
-- Create: `vite.config.ts`
-- Create: `index.html`
-- Create: `src/main.ts`
-
-**Step 1: Initialize the project**
-
-```bash
-cd /home/batman/dev/projects/games/asteroid
-npm init -y
-npm install phaser@3
-npm install -D typescript vite vitest @vitest/ui
-```
-
-**Step 2: Create tsconfig.json**
-
-```json
-{
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "outDir": "./dist",
-    "sourceMap": true,
-    "declaration": false,
-    "jsx": "preserve",
-    "lib": ["ESNext", "DOM"]
-  },
-  "include": ["src/**/*.ts"]
-}
-```
-
-**Step 3: Create vite.config.ts**
-
-```typescript
-/// <reference types="vitest" />
-import { defineConfig } from 'vite';
-
-export default defineConfig({
-  test: {
-    globals: true,
-  },
-  server: {
-    port: 8080,
-  },
-});
-```
-
-**Step 4: Create index.html**
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Asteroids</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background: #000;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      overflow: hidden;
-    }
-  </style>
-</head>
-<body>
-  <div id="game"></div>
-  <script type="module" src="/src/main.ts"></script>
-</body>
-</html>
-```
-
-**Step 5: Create src/main.ts (minimal — just verify Phaser loads)**
-
-```typescript
-import Phaser from 'phaser';
-
-const config: Phaser.Types.Core.GameConfig = {
-  type: Phaser.AUTO,
-  width: 800,
-  height: 600,
-  backgroundColor: '#000000',
-  parent: 'game',
-  scene: {
-    create() {
-      const text = this.add.text(400, 300, 'Phaser is working!', {
-        fontSize: '24px',
-        color: '#ffffff',
-      });
-      text.setOrigin(0.5);
-    },
-  },
-};
-
-new Phaser.Game(config);
-```
-
-**Step 6: Add scripts to package.json**
-
-Add to the `"scripts"` section:
-```json
-{
-  "dev": "vite",
-  "build": "tsc && vite build",
-  "test": "vitest",
-  "test:ui": "vitest --ui"
-}
-```
-
-**Step 7: Run and verify**
-
-```bash
-npm run dev
-```
-Open http://localhost:8080 — should see "Phaser is working!" centered on a black background.
-
-**Step 8: Commit**
-
-```bash
-git add package.json package-lock.json tsconfig.json vite.config.ts index.html src/main.ts
-git commit -m "feat: scaffold Phaser 3 + TypeScript + Vite project"
-```
+**How to use this plan:** You drive the implementation. Write the code yourself, consulting Phaser docs and this plan for guidance. Ask Claude to:
+- Write/generate tests for you when you've finished a piece of code
+- Code review your work at the end of each task
+- Explain any concept you're not 100% clear on
+- Help debug if something isn't working
 
 ---
 
-### Task 2: Game Config & Constants
+## Task 1: Project Scaffolding
 
-**Files:**
-- Create: `src/config.ts`
-- Create: `src/config.spec.ts`
+**Goal:** Get a working Phaser 3 + TypeScript + Vite dev environment showing something on screen.
 
-**Step 1: Write the test**
+**What you'll do:**
+1. Run `npm init -y` to create package.json
+2. Install dependencies: `npm install phaser@3` and `npm install -D typescript vite vitest @vitest/ui`
+3. Create `tsconfig.json`, `vite.config.ts`, `index.html`, and `src/main.ts`
+4. Add npm scripts: `dev`, `build`, `test`, `test:ui`
 
-```typescript
-// src/config.spec.ts
-import { describe, it, expect } from 'vitest';
-import { GAME, SHIP, ASTEROID, BULLET, SCORE } from './config';
+**Key concepts to understand:**
+- **`tsconfig.json`** — tells TypeScript how to compile. Key settings: `"moduleResolution": "bundler"` (lets Vite handle module resolution), `"strict": true` (catches more bugs at compile time), `"lib": ["ESNext", "DOM"]` (gives you browser APIs + modern JS).
+- **`vite.config.ts`** — Vite config. The `/// <reference types="vitest" />` at the top is a TypeScript "triple-slash directive" that adds Vitest's types so the `test` field is recognized in Vite's config. Without it, TypeScript would error on the `test` property.
+- **`index.html`** — Vite uses this as the entry point (not a JS file like Webpack). The `<script type="module">` tag tells the browser to load your TS as an ES module — Vite transpiles it on the fly during dev.
+- **`Phaser.Game` config** — `type: Phaser.AUTO` lets Phaser choose WebGL or Canvas (prefers WebGL). `parent: 'game'` mounts the canvas inside that DOM element. The `scene` array determines which scenes exist and which loads first.
 
-describe('Game config', () => {
-  it('defines screen dimensions', () => {
-    expect(GAME.WIDTH).toBeGreaterThan(0);
-    expect(GAME.HEIGHT).toBeGreaterThan(0);
-  });
+**Verify:** Run `npm run dev`, open http://localhost:8080. You should see a black screen with "Phaser is working!" text. If you see this, Phaser, Vite, and TypeScript are all wired up correctly.
 
-  it('defines ship physics', () => {
-    expect(SHIP.THRUST).toBeGreaterThan(0);
-    expect(SHIP.MAX_SPEED).toBeGreaterThan(SHIP.THRUST);
-    expect(SHIP.ROTATION_SPEED).toBeGreaterThan(0);
-    expect(SHIP.INVINCIBILITY_DURATION).toBeGreaterThan(0);
-  });
-
-  it('defines asteroid sizes with decreasing radius', () => {
-    expect(ASTEROID.LARGE.RADIUS).toBeGreaterThan(ASTEROID.MEDIUM.RADIUS);
-    expect(ASTEROID.MEDIUM.RADIUS).toBeGreaterThan(ASTEROID.SMALL.RADIUS);
-  });
-
-  it('defines asteroid speeds with smaller = faster', () => {
-    expect(ASTEROID.SMALL.SPEED_MAX).toBeGreaterThan(ASTEROID.LARGE.SPEED_MAX);
-  });
-
-  it('defines scoring with smaller = more points', () => {
-    expect(SCORE.SMALL).toBeGreaterThan(SCORE.MEDIUM);
-    expect(SCORE.MEDIUM).toBeGreaterThan(SCORE.LARGE);
-  });
-
-  it('defines bullet lifespan', () => {
-    expect(BULLET.SPEED).toBeGreaterThan(0);
-    expect(BULLET.LIFESPAN).toBeGreaterThan(0);
-  });
-});
-```
-
-**Step 2: Run test to verify it fails**
-
-```bash
-npx vitest run src/config.spec.ts
-```
-Expected: FAIL — module not found
-
-**Step 3: Write config.ts**
-
-```typescript
-// src/config.ts
-
-export const GAME = {
-  WIDTH: 800,
-  HEIGHT: 600,
-  LIVES: 3,
-  INITIAL_ASTEROIDS: 4,
-} as const;
-
-export const SHIP = {
-  THRUST: 200,            // pixels/sec² acceleration
-  MAX_SPEED: 400,         // pixels/sec max velocity magnitude
-  ROTATION_SPEED: 200,    // degrees/sec
-  SIZE: 20,               // radius for drawing/collision
-  INVINCIBILITY_DURATION: 2000, // ms after respawn
-  FIRE_RATE: 250,         // ms between shots
-} as const;
-
-export const ASTEROID = {
-  LARGE: {
-    RADIUS: 40,
-    SPEED_MIN: 30,
-    SPEED_MAX: 80,
-    VERTICES: 10,
-    JAGGEDNESS: 0.4,      // max random offset as fraction of radius
-  },
-  MEDIUM: {
-    RADIUS: 25,
-    SPEED_MIN: 50,
-    SPEED_MAX: 120,
-    VERTICES: 8,
-    JAGGEDNESS: 0.4,
-  },
-  SMALL: {
-    RADIUS: 12,
-    SPEED_MIN: 80,
-    SPEED_MAX: 180,
-    VERTICES: 6,
-    JAGGEDNESS: 0.4,
-  },
-} as const;
-
-export const BULLET = {
-  SPEED: 500,             // pixels/sec
-  LIFESPAN: 1000,         // ms before self-destruct
-  SIZE: 2,                // radius for drawing
-} as const;
-
-export const SCORE = {
-  LARGE: 20,
-  MEDIUM: 50,
-  SMALL: 100,
-} as const;
-```
-
-**Step 4: Run test to verify it passes**
-
-```bash
-npx vitest run src/config.spec.ts
-```
-Expected: PASS
-
-**Step 5: Commit**
-
-```bash
-git add src/config.ts src/config.spec.ts
-git commit -m "feat: add game config constants with tests"
-```
+**Commit** when it works.
 
 ---
 
-### Task 3: Math Utilities
+## Task 2: Game Config & Constants
 
-Pure functions for vector math and screen wrapping — the core logic we want to understand and test thoroughly.
+**Goal:** Create a central config file for all tunable game values. This prevents magic numbers scattered through your code and makes tuning gameplay easy.
 
-**Files:**
-- Create: `src/utils/math.ts`
-- Create: `src/utils/math.spec.ts`
+**What you'll do:**
+1. Create `src/config.ts` with exported `const` objects for: `GAME` (dimensions, lives, initial asteroid count), `SHIP` (thrust, speed, rotation, size, invincibility, fire rate), `ASTEROID` (per-size radius, speed range, vertex count, jaggedness), `BULLET` (speed, lifespan, size), `SCORE` (points per asteroid size).
+2. Use `as const` on each object — this is a TypeScript feature that makes all properties `readonly` and narrows their types to literal values (e.g., `WIDTH` becomes type `800` not `number`).
 
-**Step 1: Write the tests**
+**Values to use (you'll tune these later by playing):**
+- Screen: 800x600, 3 lives, 4 initial asteroids
+- Ship: 200 thrust (px/s²), 400 max speed (px/s), 200 rotation (deg/s), 20 radius, 2000ms invincibility, 250ms fire rate
+- Asteroids: Large (40r, 30-80 speed, 10 verts), Medium (25r, 50-120, 8 verts), Small (12r, 80-180, 6 verts), all 0.4 jaggedness
+- Bullet: 500 speed, 1000ms lifespan, 2 radius
+- Score: Large=20, Medium=50, Small=100 (smaller = harder to hit = more points)
 
-```typescript
-// src/utils/math.spec.ts
-import { describe, it, expect } from 'vitest';
-import {
-  wrapPosition,
-  velocityFromAngle,
-  clampMagnitude,
-  randomBetween,
-  generateAsteroidVertices,
-} from './math';
-import { GAME } from '../config';
+**Ask Claude** to generate the config tests when you're done writing `config.ts`. Tests should verify the relationships (e.g., smaller asteroids are faster, score increases as size decreases).
 
-describe('wrapPosition', () => {
-  const margin = 20;
-
-  it('wraps right edge to left', () => {
-    const result = wrapPosition(GAME.WIDTH + margin + 1, 300, margin);
-    expect(result.x).toBeLessThan(0);
-    expect(result.y).toBe(300);
-  });
-
-  it('wraps left edge to right', () => {
-    const result = wrapPosition(-margin - 1, 300, margin);
-    expect(result.x).toBeGreaterThan(GAME.WIDTH);
-    expect(result.y).toBe(300);
-  });
-
-  it('wraps bottom edge to top', () => {
-    const result = wrapPosition(400, GAME.HEIGHT + margin + 1, margin);
-    expect(result.x).toBe(400);
-    expect(result.y).toBeLessThan(0);
-  });
-
-  it('wraps top edge to bottom', () => {
-    const result = wrapPosition(400, -margin - 1, margin);
-    expect(result.x).toBe(400);
-    expect(result.y).toBeGreaterThan(GAME.HEIGHT);
-  });
-
-  it('does not wrap when within bounds', () => {
-    const result = wrapPosition(400, 300, margin);
-    expect(result.x).toBe(400);
-    expect(result.y).toBe(300);
-  });
-});
-
-describe('velocityFromAngle', () => {
-  it('returns rightward velocity at 0 degrees', () => {
-    const { vx, vy } = velocityFromAngle(0, 100);
-    expect(vx).toBeCloseTo(100);
-    expect(vy).toBeCloseTo(0);
-  });
-
-  it('returns downward velocity at 90 degrees', () => {
-    const { vx, vy } = velocityFromAngle(90, 100);
-    expect(vx).toBeCloseTo(0);
-    expect(vy).toBeCloseTo(100);
-  });
-});
-
-describe('clampMagnitude', () => {
-  it('clamps vector exceeding max', () => {
-    const { vx, vy } = clampMagnitude(300, 400, 100);
-    const mag = Math.sqrt(vx * vx + vy * vy);
-    expect(mag).toBeCloseTo(100);
-  });
-
-  it('does not modify vector under max', () => {
-    const { vx, vy } = clampMagnitude(3, 4, 100);
-    expect(vx).toBe(3);
-    expect(vy).toBe(4);
-  });
-});
-
-describe('randomBetween', () => {
-  it('returns value within range', () => {
-    for (let i = 0; i < 50; i++) {
-      const val = randomBetween(10, 20);
-      expect(val).toBeGreaterThanOrEqual(10);
-      expect(val).toBeLessThanOrEqual(20);
-    }
-  });
-});
-
-describe('generateAsteroidVertices', () => {
-  it('returns correct number of vertices', () => {
-    const verts = generateAsteroidVertices(40, 10, 0.4);
-    expect(verts).toHaveLength(10);
-  });
-
-  it('each vertex has x and y near the radius', () => {
-    const radius = 40;
-    const verts = generateAsteroidVertices(radius, 8, 0.4);
-    for (const v of verts) {
-      const dist = Math.sqrt(v.x * v.x + v.y * v.y);
-      expect(dist).toBeGreaterThan(radius * 0.5);
-      expect(dist).toBeLessThan(radius * 1.5);
-    }
-  });
-});
-```
-
-**Step 2: Run test to verify it fails**
-
-```bash
-npx vitest run src/utils/math.spec.ts
-```
-Expected: FAIL
-
-**Step 3: Write math.ts**
-
-```typescript
-// src/utils/math.ts
-import { GAME } from '../config';
-
-export interface Vec2 {
-  x: number;
-  y: number;
-}
-
-/**
- * Wrap a position so objects reappear on the opposite edge.
- * margin = how far past the edge before wrapping (typically the object's radius).
- */
-export function wrapPosition(x: number, y: number, margin: number): Vec2 {
-  let wx = x;
-  let wy = y;
-
-  if (wx > GAME.WIDTH + margin) {
-    wx = -margin;
-  } else if (wx < -margin) {
-    wx = GAME.WIDTH + margin;
-  }
-
-  if (wy > GAME.HEIGHT + margin) {
-    wy = -margin;
-  } else if (wy < -margin) {
-    wy = GAME.HEIGHT + margin;
-  }
-
-  return { x: wx, y: wy };
-}
-
-/**
- * Convert an angle (degrees) and speed into velocity components.
- * 0° = right, 90° = down (Phaser's coordinate system).
- */
-export function velocityFromAngle(angleDeg: number, speed: number): { vx: number; vy: number } {
-  const rad = (angleDeg * Math.PI) / 180;
-  return {
-    vx: Math.cos(rad) * speed,
-    vy: Math.sin(rad) * speed,
-  };
-}
-
-/**
- * Clamp a velocity vector to a maximum magnitude.
- */
-export function clampMagnitude(vx: number, vy: number, max: number): { vx: number; vy: number } {
-  const mag = Math.sqrt(vx * vx + vy * vy);
-  if (mag <= max) {
-    return { vx, vy };
-  }
-  const scale = max / mag;
-  return { vx: vx * scale, vy: vy * scale };
-}
-
-/**
- * Random float between min and max (inclusive).
- */
-export function randomBetween(min: number, max: number): number {
-  return min + Math.random() * (max - min);
-}
-
-/**
- * Generate randomized vertices for an asteroid polygon.
- * Returns array of {x, y} points distributed around a circle with jagged offsets.
- */
-export function generateAsteroidVertices(
-  radius: number,
-  numVertices: number,
-  jaggedness: number
-): Vec2[] {
-  const vertices: Vec2[] = [];
-  const angleStep = (Math.PI * 2) / numVertices;
-
-  for (let i = 0; i < numVertices; i++) {
-    const angle = i * angleStep;
-    const offset = radius * (1 + (Math.random() * 2 - 1) * jaggedness);
-    vertices.push({
-      x: Math.cos(angle) * offset,
-      y: Math.sin(angle) * offset,
-    });
-  }
-
-  return vertices;
-}
-```
-
-**Step 4: Run test to verify it passes**
-
-```bash
-npx vitest run src/utils/math.spec.ts
-```
-Expected: PASS
-
-**Step 5: Commit**
-
-```bash
-git add src/utils/math.ts src/utils/math.spec.ts
-git commit -m "feat: add math utilities for vector math and screen wrapping"
-```
+**Commit** when tests pass.
 
 ---
 
-### Task 4: Scene Skeleton — Boot, Menu, GameOver
+## Task 3: Math Utilities
 
-Set up the three simpler scenes so we have the full scene flow working before tackling GameScene.
+**Goal:** Build pure functions for 2D vector math and screen wrapping. These are the mathematical foundations of the game and the most testable code in the project.
 
-**Files:**
-- Create: `src/scenes/BootScene.ts`
-- Create: `src/scenes/MenuScene.ts`
-- Create: `src/scenes/GameOverScene.ts`
-- Modify: `src/main.ts`
+**What you'll write in `src/utils/math.ts`:**
 
-**Step 1: Create BootScene**
+1. **`Vec2` interface** — `{ x: number; y: number }`. A simple 2D vector type used throughout.
 
-```typescript
-// src/scenes/BootScene.ts
-import Phaser from 'phaser';
+2. **`wrapPosition(x, y, margin) → Vec2`** — Screen wrapping. If x goes past `GAME.WIDTH + margin`, set it to `-margin` (reappear on left). Same for all 4 edges. The `margin` is typically the object's radius so it fully disappears before reappearing.
 
-export class BootScene extends Phaser.Scene {
-  constructor() {
-    super({ key: 'Boot' });
-  }
+3. **`velocityFromAngle(angleDeg, speed) → { vx, vy }`** — Converts an angle + speed into x/y velocity components. This is basic trigonometry: `vx = cos(angle) * speed`, `vy = sin(angle) * speed`. **Important:** Phaser uses degrees for angles but trig functions use radians, so you need to convert: `rad = deg * Math.PI / 180`. Also, 0° points right and 90° points down (standard screen coordinates, y increases downward).
 
-  create(): void {
-    this.scene.start('Menu');
-  }
-}
-```
+4. **`clampMagnitude(vx, vy, max) → { vx, vy }`** — Limits a velocity vector's magnitude (length) without changing its direction. Calculate magnitude with Pythagorean theorem: `mag = √(vx² + vy²)`. If `mag > max`, scale both components by `max / mag`. This enforces max speed on the ship.
 
-**Step 2: Create MenuScene**
+5. **`randomBetween(min, max) → number`** — Random float in range. Simple: `min + Math.random() * (max - min)`.
 
-```typescript
-// src/scenes/MenuScene.ts
-import Phaser from 'phaser';
-import { GAME } from '../config';
+6. **`generateAsteroidVertices(radius, numVertices, jaggedness) → Vec2[]`** — Creates a jagged polygon. Distribute `numVertices` points evenly around a circle (angle step = 2π / n), then offset each point's distance from center by a random amount (`radius * (1 + random * jaggedness)`). This gives each asteroid a unique rocky shape.
 
-export class MenuScene extends Phaser.Scene {
-  constructor() {
-    super({ key: 'Menu' });
-  }
+**Ask Claude** to generate the math tests when you're done. Tests should cover edge cases for wrapping, known angles for velocity (0°, 90°), clamping behavior, and vertex generation.
 
-  create(): void {
-    this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 60, 'ASTEROIDS', {
-        fontSize: '48px',
-        color: '#ffffff',
-        fontFamily: 'monospace',
-      })
-      .setOrigin(0.5);
-
-    this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 + 20, 'Press ENTER to start', {
-        fontSize: '18px',
-        color: '#888888',
-        fontFamily: 'monospace',
-      })
-      .setOrigin(0.5);
-
-    this.input.keyboard!.once('keydown-ENTER', () => {
-      this.scene.start('Game');
-    });
-  }
-}
-```
-
-**Step 3: Create GameOverScene**
-
-```typescript
-// src/scenes/GameOverScene.ts
-import Phaser from 'phaser';
-import { GAME } from '../config';
-
-export class GameOverScene extends Phaser.Scene {
-  constructor() {
-    super({ key: 'GameOver' });
-  }
-
-  create(data: { score: number }): void {
-    const score = data.score ?? 0;
-
-    this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 60, 'GAME OVER', {
-        fontSize: '48px',
-        color: '#ff0000',
-        fontFamily: 'monospace',
-      })
-      .setOrigin(0.5);
-
-    this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 + 10, `Score: ${score}`, {
-        fontSize: '24px',
-        color: '#ffffff',
-        fontFamily: 'monospace',
-      })
-      .setOrigin(0.5);
-
-    this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 + 60, 'Press ENTER to play again', {
-        fontSize: '18px',
-        color: '#888888',
-        fontFamily: 'monospace',
-      })
-      .setOrigin(0.5);
-
-    this.input.keyboard!.once('keydown-ENTER', () => {
-      this.scene.start('Menu');
-    });
-  }
-}
-```
-
-**Step 4: Update main.ts to use all scenes**
-
-```typescript
-// src/main.ts
-import Phaser from 'phaser';
-import { GAME } from './config';
-import { BootScene } from './scenes/BootScene';
-import { MenuScene } from './scenes/MenuScene';
-import { GameOverScene } from './scenes/GameOverScene';
-
-const config: Phaser.Types.Core.GameConfig = {
-  type: Phaser.AUTO,
-  width: GAME.WIDTH,
-  height: GAME.HEIGHT,
-  backgroundColor: '#000000',
-  parent: 'game',
-  physics: {
-    default: 'arcade',
-    arcade: {
-      debug: false,
-    },
-  },
-  scene: [BootScene, MenuScene, GameOverScene],
-};
-
-new Phaser.Game(config);
-```
-
-Note: GameScene is not added yet — pressing Enter on Menu will error. That's expected; we'll add it in Task 8.
-
-**Step 5: Run dev server and verify**
-
-```bash
-npm run dev
-```
-Should see: Boot auto-transitions to Menu, title screen shows "ASTEROIDS" and "Press ENTER to start".
-
-**Step 6: Commit**
-
-```bash
-git add src/scenes/BootScene.ts src/scenes/MenuScene.ts src/scenes/GameOverScene.ts src/main.ts
-git commit -m "feat: add Boot, Menu, and GameOver scenes with scene flow"
-```
+**Commit** when tests pass.
 
 ---
 
-### Task 5: Ship Entity
+## Task 4: Scene Skeleton — Boot, Menu, GameOver
 
-The most complex entity. We build it with manual thrust physics and vector-style rendering.
+**Goal:** Set up the three simpler scenes and wire up the scene flow. After this you'll have a working navigation loop (minus the actual game).
 
-**Files:**
-- Create: `src/entities/Ship.ts`
+**What you'll write:**
 
-**Step 1: Create Ship class**
+**`src/scenes/BootScene.ts`** — Extends `Phaser.Scene`. Constructor calls `super({ key: 'Boot' })` — the key string is how scenes reference each other. Its `create()` method just calls `this.scene.start('Menu')` to immediately transition.
 
-```typescript
-// src/entities/Ship.ts
-import Phaser from 'phaser';
-import { SHIP, GAME } from '../config';
-import { wrapPosition, velocityFromAngle, clampMagnitude } from '../utils/math';
+**`src/scenes/MenuScene.ts`** — Displays title text and "press ENTER to start" using `this.add.text()`. Listens for ENTER with `this.input.keyboard!.once('keydown-ENTER', callback)`. The `once` means it only fires one time (prevents double-starts). The `!` is TypeScript's non-null assertion — `keyboard` could theoretically be null if no keyboard exists, but we know it won't be.
 
-export class Ship extends Phaser.GameObjects.Container {
-  public velocityX = 0;
-  public velocityY = 0;
-  public isInvincible = false;
+**`src/scenes/GameOverScene.ts`** — Receives score data via the `create(data)` parameter. When one scene does `this.scene.start('GameOver', { score: 500 })`, the target scene's `create` receives that object. Displays the score and listens for ENTER to go back to Menu.
 
-  private graphics: Phaser.GameObjects.Graphics;
-  private thrustGraphics: Phaser.GameObjects.Graphics;
-  private invincibleTimer?: Phaser.Time.TimerEvent;
-  private lastFireTime = 0;
+**`src/main.ts`** — Update to import all three scenes and list them in the `scene` array of the game config. Also add the physics config here: `physics: { default: 'arcade', arcade: { debug: false } }`. The arcade physics system is Phaser's simplest — axis-aligned bounding boxes and circles. We need it for collision detection later. Set `debug: true` temporarily if you ever want to see the collision bodies drawn on screen.
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y);
+**Key concept — Phaser Scene lifecycle:**
+- `constructor()` → runs once when scene class is instantiated
+- `preload()` → load assets (images, audio) — we skip this since we draw everything
+- `create()` → runs each time the scene starts — set up game objects here
+- `update(time, delta)` → runs every frame (~60fps) — game loop goes here
 
-    // Main ship shape
-    this.graphics = scene.add.graphics();
-    this.add(this.graphics);
-    this.drawShip();
+**Verify:** `npm run dev` → see "ASTEROIDS" title screen. Pressing Enter will error (GameScene doesn't exist yet) — that's expected.
 
-    // Thrust flame (drawn separately so we can toggle visibility)
-    this.thrustGraphics = scene.add.graphics();
-    this.add(this.thrustGraphics);
-    this.thrustGraphics.setVisible(false);
-    this.drawThrust();
-
-    // Physics body for collision detection only
-    scene.physics.world.enable(this);
-    const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setCircle(SHIP.SIZE, -SHIP.SIZE, -SHIP.SIZE);
-
-    scene.add.existing(this);
-  }
-
-  private drawShip(): void {
-    const g = this.graphics;
-    const s = SHIP.SIZE;
-
-    // Glow layer
-    g.lineStyle(6, 0x4444ff, 0.3);
-    g.beginPath();
-    g.moveTo(s, 0);
-    g.lineTo(-s, -s * 0.7);
-    g.lineTo(-s * 0.6, 0);
-    g.lineTo(-s, s * 0.7);
-    g.closePath();
-    g.strokePath();
-
-    // Main line
-    g.lineStyle(2, 0xffffff, 1);
-    g.beginPath();
-    g.moveTo(s, 0);           // nose (right, since 0° = right)
-    g.lineTo(-s, -s * 0.7);   // top-left wing
-    g.lineTo(-s * 0.6, 0);    // rear indent
-    g.lineTo(-s, s * 0.7);    // bottom-left wing
-    g.closePath();
-    g.strokePath();
-  }
-
-  private drawThrust(): void {
-    const g = this.thrustGraphics;
-    const s = SHIP.SIZE;
-
-    g.lineStyle(2, 0xff6600, 1);
-    g.beginPath();
-    g.moveTo(-s * 0.6, -s * 0.3);
-    g.lineTo(-s * 1.2, 0);
-    g.lineTo(-s * 0.6, s * 0.3);
-    g.strokePath();
-  }
-
-  update(delta: number, cursors: Phaser.Types.Input.Keyboard.CursorKeys): void {
-    const dt = delta / 1000; // convert ms to seconds
-
-    // Rotation
-    if (cursors.left.isDown) {
-      this.angle -= SHIP.ROTATION_SPEED * dt;
-    }
-    if (cursors.right.isDown) {
-      this.angle += SHIP.ROTATION_SPEED * dt;
-    }
-
-    // Thrust
-    if (cursors.up.isDown) {
-      const thrust = velocityFromAngle(this.angle, SHIP.THRUST * dt);
-      this.velocityX += thrust.vx;
-      this.velocityY += thrust.vy;
-
-      const clamped = clampMagnitude(this.velocityX, this.velocityY, SHIP.MAX_SPEED);
-      this.velocityX = clamped.vx;
-      this.velocityY = clamped.vy;
-
-      this.thrustGraphics.setVisible(true);
-    } else {
-      this.thrustGraphics.setVisible(false);
-    }
-
-    // Apply velocity
-    this.x += this.velocityX * dt;
-    this.y += this.velocityY * dt;
-
-    // Screen wrapping
-    const wrapped = wrapPosition(this.x, this.y, SHIP.SIZE);
-    this.x = wrapped.x;
-    this.y = wrapped.y;
-  }
-
-  canFire(time: number): boolean {
-    return time - this.lastFireTime >= SHIP.FIRE_RATE;
-  }
-
-  recordFire(time: number): void {
-    this.lastFireTime = time;
-  }
-
-  makeInvincible(): void {
-    this.isInvincible = true;
-
-    // Flicker effect
-    const flicker = this.scene.time.addEvent({
-      delay: 100,
-      callback: () => {
-        this.alpha = this.alpha === 1 ? 0.3 : 1;
-      },
-      loop: true,
-    });
-
-    this.invincibleTimer = this.scene.time.delayedCall(
-      SHIP.INVINCIBILITY_DURATION,
-      () => {
-        this.isInvincible = false;
-        this.alpha = 1;
-        flicker.destroy();
-      }
-    );
-  }
-
-  reset(x: number, y: number): void {
-    this.setPosition(x, y);
-    this.setAngle(-90); // point up
-    this.velocityX = 0;
-    this.velocityY = 0;
-    this.makeInvincible();
-  }
-
-  cleanup(): void {
-    this.invincibleTimer?.destroy();
-  }
-}
-```
-
-**Step 2: Commit**
-
-Ship cannot be visually verified until GameScene exists (Task 8).
-
-```bash
-git add src/entities/Ship.ts
-git commit -m "feat: add Ship entity with thrust physics and vector rendering"
-```
+**Commit** when the menu displays correctly.
 
 ---
 
-### Task 6: Asteroid Entity
+## Task 5: Ship Entity
 
-**Files:**
-- Create: `src/entities/Asteroid.ts`
+**Goal:** Build the player ship with manual thrust-based physics and vector-style rendering.
 
-**Step 1: Create Asteroid class**
+**What you'll write in `src/entities/Ship.ts`:**
 
-```typescript
-// src/entities/Asteroid.ts
-import Phaser from 'phaser';
-import { ASTEROID } from '../config';
-import { wrapPosition, velocityFromAngle, randomBetween, generateAsteroidVertices, Vec2 } from '../utils/math';
+A class extending `Phaser.GameObjects.Container`. A Container is a game object that can hold other game objects as children. When you move/rotate the Container, all children move/rotate with it. This is perfect for entities: draw the shape at local origin (0,0), then position the Container wherever you want on screen.
 
-export type AsteroidSize = 'LARGE' | 'MEDIUM' | 'SMALL';
+**Properties you'll need:**
+- `velocityX`, `velocityY` (public — GameScene reads these for bullet spawning)
+- `isInvincible` (public — GameScene checks this for collision)
+- `graphics` — a `Phaser.GameObjects.Graphics` child for the ship shape
+- `thrustGraphics` — separate Graphics child for the thrust flame (so you can toggle it)
+- `lastFireTime` — tracks fire rate limiting
 
-const SIZE_CONFIG = {
-  LARGE: ASTEROID.LARGE,
-  MEDIUM: ASTEROID.MEDIUM,
-  SMALL: ASTEROID.SMALL,
-} as const;
-
-export class Asteroid extends Phaser.GameObjects.Container {
-  public velocityX: number;
-  public velocityY: number;
-  public size: AsteroidSize;
-
-  private graphics: Phaser.GameObjects.Graphics;
-  private vertices: Vec2[];
-  private config: typeof ASTEROID.LARGE;
-
-  constructor(
-    scene: Phaser.Scene,
-    x: number,
-    y: number,
-    size: AsteroidSize,
-    velocityX?: number,
-    velocityY?: number
-  ) {
-    super(scene, x, y);
-
-    this.size = size;
-    this.config = SIZE_CONFIG[size];
-
-    // Generate unique shape
-    this.vertices = generateAsteroidVertices(
-      this.config.RADIUS,
-      this.config.VERTICES,
-      this.config.JAGGEDNESS
-    );
-
-    // Set velocity — use provided or generate random
-    if (velocityX !== undefined && velocityY !== undefined) {
-      this.velocityX = velocityX;
-      this.velocityY = velocityY;
-    } else {
-      const angle = randomBetween(0, 360);
-      const speed = randomBetween(this.config.SPEED_MIN, this.config.SPEED_MAX);
-      const vel = velocityFromAngle(angle, speed);
-      this.velocityX = vel.vx;
-      this.velocityY = vel.vy;
-    }
-
-    // Draw
-    this.graphics = scene.add.graphics();
-    this.add(this.graphics);
-    this.drawAsteroid();
-
-    // Physics body for collision
-    scene.physics.world.enable(this);
-    const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setCircle(this.config.RADIUS, -this.config.RADIUS, -this.config.RADIUS);
-
-    scene.add.existing(this);
-  }
-
-  private drawAsteroid(): void {
-    const g = this.graphics;
-
-    // Glow layer
-    g.lineStyle(5, 0x4444ff, 0.2);
-    g.beginPath();
-    g.moveTo(this.vertices[0].x, this.vertices[0].y);
-    for (let i = 1; i < this.vertices.length; i++) {
-      g.lineTo(this.vertices[i].x, this.vertices[i].y);
-    }
-    g.closePath();
-    g.strokePath();
-
-    // Main line
-    g.lineStyle(2, 0xffffff, 1);
-    g.beginPath();
-    g.moveTo(this.vertices[0].x, this.vertices[0].y);
-    for (let i = 1; i < this.vertices.length; i++) {
-      g.lineTo(this.vertices[i].x, this.vertices[i].y);
-    }
-    g.closePath();
-    g.strokePath();
-  }
-
-  update(delta: number): void {
-    const dt = delta / 1000;
-
-    this.x += this.velocityX * dt;
-    this.y += this.velocityY * dt;
-
-    const wrapped = wrapPosition(this.x, this.y, this.config.RADIUS);
-    this.x = wrapped.x;
-    this.y = wrapped.y;
-  }
-
-  /**
-   * Returns the next smaller size, or null if already smallest.
-   */
-  getChildSize(): AsteroidSize | null {
-    switch (this.size) {
-      case 'LARGE': return 'MEDIUM';
-      case 'MEDIUM': return 'SMALL';
-      case 'SMALL': return null;
-    }
-  }
-}
+**Constructor pattern** (this repeats for all entities):
+```
+1. super(scene, x, y)           — initialize Container at position
+2. Create Graphics, add as child — draw the visual shape
+3. Enable physics on Container   — scene.physics.world.enable(this)
+4. Configure physics body         — setCircle for collision detection
+5. Add self to scene              — scene.add.existing(this)
 ```
 
-**Step 2: Commit**
+**Drawing the ship** — Use the Graphics API: `g.lineStyle(width, color, alpha)` sets pen style, then `g.beginPath()`, `g.moveTo()`, `g.lineTo()`, `g.closePath()`, `g.strokePath()` draw a polygon. The ship is 4 points: nose at (size, 0), two wings at (-size, ±size*0.7), and a rear indent at (-size*0.6, 0). For the glow effect, draw the same shape twice — first with a wider, semi-transparent blue stroke, then with a thin white stroke on top.
 
-```bash
-git add src/entities/Asteroid.ts
-git commit -m "feat: add Asteroid entity with random shapes and size splitting"
-```
+**The thrust flame** — A small V-shape behind the ship. Draw it on separate Graphics so you can show/hide it with `setVisible()` based on whether the player is pressing up.
+
+**The `update(delta, cursors)` method** — This is the heart of the ship's physics. Called every frame by GameScene:
+1. **Rotation:** If left/right arrow down, adjust `this.angle` by `ROTATION_SPEED * dt`. `dt = delta / 1000` converts milliseconds to seconds. Multiplying by dt makes movement frame-rate independent — the ship rotates the same speed whether the game runs at 30fps or 144fps.
+2. **Thrust:** If up arrow down, convert the ship's current angle to a velocity vector using `velocityFromAngle`, scale by `THRUST * dt`, and add to current velocity. Then clamp to MAX_SPEED. This creates the classic Asteroids "drift" — you accelerate in one direction, then if you rotate and thrust another way, your trajectory curves.
+3. **Position:** Add `velocity * dt` to position.
+4. **Wrap:** Call `wrapPosition` to handle screen edges.
+
+**Other methods:**
+- `canFire(time)` / `recordFire(time)` — fire rate limiting using timestamp comparison
+- `makeInvincible()` — sets flag, creates a flicker effect using `scene.time.addEvent` (a repeating timer that toggles alpha), and a delayed call to end invincibility
+- `reset(x, y)` — for respawning: reposition, zero velocity, point up, trigger invincibility
+- `cleanup()` — destroy timers (prevents errors when scene transitions)
+
+**Physics body:** `body.setCircle(SHIP.SIZE, -SHIP.SIZE, -SHIP.SIZE)` — the two negative offsets center the circle on the Container's origin. Without them, the circle would be offset to the bottom-right.
+
+**You cannot visually test this yet** — it needs GameScene (Task 8). But you can ask Claude to review the code for correctness.
+
+**Commit** when you're satisfied with the code.
 
 ---
 
-### Task 7: Bullet Entity
+## Task 6: Asteroid Entity
 
-**Files:**
-- Create: `src/entities/Bullet.ts`
+**Goal:** Build asteroids with randomized shapes, three sizes, and the split-on-destroy mechanic.
 
-**Step 1: Create Bullet class**
+**What you'll write in `src/entities/Asteroid.ts`:**
 
-```typescript
-// src/entities/Bullet.ts
-import Phaser from 'phaser';
-import { BULLET } from '../config';
-import { wrapPosition } from '../utils/math';
+Same Container pattern as Ship. Key differences:
 
-export class Bullet extends Phaser.GameObjects.Container {
-  public velocityX: number;
-  public velocityY: number;
-  private graphics: Phaser.GameObjects.Graphics;
-  private lifespan: number;
+**Size system:** Define `AsteroidSize = 'LARGE' | 'MEDIUM' | 'SMALL'` (a TypeScript union type — the value can only be one of these three strings). Create a `SIZE_CONFIG` lookup object mapping each size to its config values from `config.ts`. The constructor takes a `size` parameter and looks up its config.
 
-  constructor(
-    scene: Phaser.Scene,
-    x: number,
-    y: number,
-    velocityX: number,
-    velocityY: number
-  ) {
-    super(scene, x, y);
+**Random velocity:** Constructor accepts optional `velocityX`/`velocityY`. If not provided, generates a random direction and speed within the size's range. The optional params are for when asteroids split — the parent provides specific velocities to the children.
 
-    this.velocityX = velocityX;
-    this.velocityY = velocityY;
-    this.lifespan = BULLET.LIFESPAN;
+**Drawing:** Same Graphics pattern as Ship. Use `generateAsteroidVertices` to create a unique jagged polygon, then draw it with `moveTo` to the first vertex and `lineTo` for the rest, with `closePath` to connect back to the start. Double-stroke for glow (wide blue under thin white).
 
-    this.graphics = scene.add.graphics();
-    this.add(this.graphics);
-    this.drawBullet();
+**`getChildSize()`** — Returns the next size down, or `null` if smallest. This is called by GameScene when splitting. Using a switch statement on the size enum is clean and explicit.
 
-    // Physics body
-    scene.physics.world.enable(this);
-    const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setCircle(BULLET.SIZE, -BULLET.SIZE, -BULLET.SIZE);
+**Update** is simple — apply velocity, wrap position. Asteroids don't rotate or accelerate (you could add slow rotation later as a visual enhancement).
 
-    scene.add.existing(this);
-  }
-
-  private drawBullet(): void {
-    const g = this.graphics;
-    g.fillStyle(0xffffff, 1);
-    g.fillCircle(0, 0, BULLET.SIZE);
-  }
-
-  /** Returns true if bullet is still alive */
-  update(delta: number): boolean {
-    const dt = delta / 1000;
-
-    this.lifespan -= delta;
-    if (this.lifespan <= 0) {
-      return false; // signal to destroy
-    }
-
-    this.x += this.velocityX * dt;
-    this.y += this.velocityY * dt;
-
-    const wrapped = wrapPosition(this.x, this.y, BULLET.SIZE);
-    this.x = wrapped.x;
-    this.y = wrapped.y;
-
-    return true;
-  }
-}
-```
-
-**Step 2: Commit**
-
-```bash
-git add src/entities/Bullet.ts
-git commit -m "feat: add Bullet entity with lifespan timer"
-```
+**Commit.**
 
 ---
 
-### Task 8: GameScene — Core Gameplay Loop
+## Task 7: Bullet Entity
 
-This is the big one. Ties everything together.
+**Goal:** Build the simplest entity — a projectile with a lifespan.
 
-**Files:**
-- Create: `src/scenes/GameScene.ts`
-- Modify: `src/main.ts` (add GameScene to scene list)
+**What you'll write in `src/entities/Bullet.ts`:**
 
-**Step 1: Create GameScene**
+Same Container pattern. Constructor takes `velocityX`/`velocityY` directly (calculated by GameScene from the ship's angle and velocity). No random behavior.
 
+**Key design:** `update(delta)` returns a `boolean` — `true` if alive, `false` if lifespan expired. This lets GameScene iterate bullets and destroy dead ones in a clean pattern:
 ```typescript
-// src/scenes/GameScene.ts
-import Phaser from 'phaser';
-import { GAME, SHIP, BULLET, SCORE, ASTEROID } from '../config';
-import { Ship } from '../entities/Ship';
-import { Asteroid, AsteroidSize } from '../entities/Asteroid';
-import { Bullet } from '../entities/Bullet';
-import { velocityFromAngle, randomBetween } from '../utils/math';
-
-export class GameScene extends Phaser.Scene {
-  private ship!: Ship;
-  private asteroids: Asteroid[] = [];
-  private bullets: Bullet[] = [];
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private fireKey!: Phaser.Input.Keyboard.Key;
-
-  private score = 0;
-  private lives = GAME.LIVES;
-  private wave = 1;
-  private isRespawning = false;
-
-  private scoreText!: Phaser.GameObjects.Text;
-  private livesText!: Phaser.GameObjects.Text;
-
-  constructor() {
-    super({ key: 'Game' });
-  }
-
-  create(): void {
-    // Reset state for new game
-    this.score = 0;
-    this.lives = GAME.LIVES;
-    this.wave = 1;
-    this.asteroids = [];
-    this.bullets = [];
-    this.isRespawning = false;
-
-    // Input
-    this.cursors = this.input.keyboard!.createCursorKeys();
-    this.fireKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-
-    // Ship
-    this.ship = new Ship(this, GAME.WIDTH / 2, GAME.HEIGHT / 2);
-    this.ship.setAngle(-90); // point up initially
-
-    // HUD
-    this.scoreText = this.add.text(16, 16, 'Score: 0', {
-      fontSize: '18px',
-      color: '#ffffff',
-      fontFamily: 'monospace',
-    });
-    this.livesText = this.add.text(GAME.WIDTH - 16, 16, `Lives: ${this.lives}`, {
-      fontSize: '18px',
-      color: '#ffffff',
-      fontFamily: 'monospace',
-    }).setOrigin(1, 0);
-
-    // Spawn first wave
-    this.spawnWave();
-  }
-
-  update(time: number, delta: number): void {
-    if (!this.isRespawning) {
-      // Update ship
-      this.ship.update(delta, this.cursors);
-
-      // Firing
-      if (this.fireKey.isDown && this.ship.canFire(time)) {
-        this.fireBullet(time);
-      }
-    }
-
-    // Update bullets
-    for (let i = this.bullets.length - 1; i >= 0; i--) {
-      const alive = this.bullets[i].update(delta);
-      if (!alive) {
-        this.bullets[i].destroy();
-        this.bullets.splice(i, 1);
-      }
-    }
-
-    // Update asteroids
-    for (const asteroid of this.asteroids) {
-      asteroid.update(delta);
-    }
-
-    // Check collisions
-    this.checkBulletAsteroidCollisions();
-    this.checkShipAsteroidCollisions();
-
-    // Check wave completion
-    if (this.asteroids.length === 0) {
-      this.wave++;
-      this.spawnWave();
-    }
-  }
-
-  private fireBullet(time: number): void {
-    this.ship.recordFire(time);
-
-    const vel = velocityFromAngle(this.ship.angle, BULLET.SPEED);
-    const noseOffset = velocityFromAngle(this.ship.angle, SHIP.SIZE);
-
-    const bullet = new Bullet(
-      this,
-      this.ship.x + noseOffset.vx,
-      this.ship.y + noseOffset.vy,
-      vel.vx + this.ship.velocityX,
-      vel.vy + this.ship.velocityY
-    );
-
-    this.bullets.push(bullet);
-  }
-
-  private spawnWave(): void {
-    const count = GAME.INITIAL_ASTEROIDS + (this.wave - 1);
-
-    for (let i = 0; i < count; i++) {
-      const { x, y } = this.getSpawnPosition();
-      const asteroid = new Asteroid(this, x, y, 'LARGE');
-      this.asteroids.push(asteroid);
-    }
-  }
-
-  /** Pick a random position on a screen edge, away from the ship. */
-  private getSpawnPosition(): { x: number; y: number } {
-    const minDist = 150;
-    let x: number, y: number;
-
-    do {
-      // Pick a random edge
-      const edge = Math.floor(Math.random() * 4);
-      switch (edge) {
-        case 0: x = randomBetween(0, GAME.WIDTH); y = 0; break;                // top
-        case 1: x = randomBetween(0, GAME.WIDTH); y = GAME.HEIGHT; break;      // bottom
-        case 2: x = 0; y = randomBetween(0, GAME.HEIGHT); break;               // left
-        default: x = GAME.WIDTH; y = randomBetween(0, GAME.HEIGHT); break;     // right
-      }
-    } while (
-      Math.hypot(x - this.ship.x, y - this.ship.y) < minDist
-    );
-
-    return { x, y };
-  }
-
-  private checkBulletAsteroidCollisions(): void {
-    for (let bi = this.bullets.length - 1; bi >= 0; bi--) {
-      const bullet = this.bullets[bi];
-
-      for (let ai = this.asteroids.length - 1; ai >= 0; ai--) {
-        const asteroid = this.asteroids[ai];
-
-        if (this.physics.overlap(bullet, asteroid)) {
-          // Score
-          this.addScore(asteroid.size);
-
-          // Split asteroid
-          this.splitAsteroid(asteroid, ai);
-
-          // Destroy bullet
-          bullet.destroy();
-          this.bullets.splice(bi, 1);
-          break; // this bullet is gone, move to next
-        }
-      }
-    }
-  }
-
-  private checkShipAsteroidCollisions(): void {
-    if (this.isRespawning || this.ship.isInvincible) return;
-
-    for (const asteroid of this.asteroids) {
-      if (this.physics.overlap(this.ship, asteroid)) {
-        this.onShipHit();
-        break;
-      }
-    }
-  }
-
-  private splitAsteroid(asteroid: Asteroid, index: number): void {
-    const childSize = asteroid.getChildSize();
-
-    if (childSize) {
-      // Spawn 2 children with diverging velocities
-      for (let i = 0; i < 2; i++) {
-        const angle = randomBetween(0, 360);
-        const sizeConfig = childSize === 'MEDIUM' ? ASTEROID.MEDIUM : ASTEROID.SMALL;
-        const speed = randomBetween(sizeConfig.SPEED_MIN, sizeConfig.SPEED_MAX);
-        const vel = velocityFromAngle(angle, speed);
-
-        const child = new Asteroid(
-          this,
-          asteroid.x,
-          asteroid.y,
-          childSize,
-          vel.vx,
-          vel.vy
-        );
-        this.asteroids.push(child);
-      }
-    }
-
-    // Remove original
-    asteroid.destroy();
-    this.asteroids.splice(index, 1);
-  }
-
-  private addScore(size: AsteroidSize): void {
-    const points = SCORE[size];
-    this.score += points;
-    this.scoreText.setText(`Score: ${this.score}`);
-  }
-
-  private onShipHit(): void {
-    this.lives--;
-    this.livesText.setText(`Lives: ${this.lives}`);
-
-    if (this.lives <= 0) {
-      this.ship.cleanup();
-      this.scene.start('GameOver', { score: this.score });
-      return;
-    }
-
-    // Hide ship, respawn after delay
-    this.ship.setVisible(false);
-    this.isRespawning = true;
-
-    this.time.delayedCall(1000, () => {
-      this.ship.setVisible(true);
-      this.ship.reset(GAME.WIDTH / 2, GAME.HEIGHT / 2);
-      this.isRespawning = false;
-    });
+for (let i = bullets.length - 1; i >= 0; i--) {
+  if (!bullets[i].update(delta)) {
+    bullets[i].destroy();
+    bullets.splice(i, 1);
   }
 }
 ```
+The reverse iteration (`i--`) is important — if you iterate forward and remove items, you skip elements because indices shift.
 
-**Step 2: Update main.ts to include GameScene**
+**Drawing:** Just a small filled circle. `g.fillStyle(color, alpha)` then `g.fillCircle(0, 0, radius)`.
 
-Add import:
-```typescript
-import { GameScene } from './scenes/GameScene';
-```
-
-Add to scene array:
-```typescript
-scene: [BootScene, MenuScene, GameScene, GameOverScene],
-```
-
-**Step 3: Run and verify full game loop**
-
-```bash
-npm run dev
-```
-
-Test manually:
-- Menu → press Enter → game starts with ship and asteroids
-- Arrow keys rotate and thrust, space shoots
-- Bullets destroy asteroids, asteroids split
-- Ship dies on contact, respawns with flicker
-- Game over when lives = 0, shows score, Enter returns to menu
-- Clearing all asteroids spawns a new wave
-
-**Step 4: Commit**
-
-```bash
-git add src/scenes/GameScene.ts src/main.ts
-git commit -m "feat: add GameScene with full gameplay loop"
-```
+**Commit.**
 
 ---
 
-### Task 9: Run Full Test Suite & Verify
+## Task 8: GameScene — Core Gameplay Loop
 
-**Step 1: Run all tests**
+**Goal:** Wire everything together into a playable game. This is the largest and most important task.
 
-```bash
-npx vitest run
-```
-Expected: All tests pass
+**What you'll write in `src/scenes/GameScene.ts`:**
 
-**Step 2: Full manual playtest**
+**Properties:**
+- `ship`, `asteroids[]`, `bullets[]` — entity references
+- `cursors`, `fireKey` — input references
+- `score`, `lives`, `wave`, `isRespawning` — game state
+- `scoreText`, `livesText` — HUD text objects
 
-Verify all gameplay mechanics work end-to-end:
-- [ ] Menu → Game transition
-- [ ] Ship rotation, thrust, drift (no friction)
-- [ ] Screen wrapping (ship, asteroids, bullets)
-- [ ] Shooting mechanics and fire rate
-- [ ] Asteroid splitting (large → 2 medium → 2 small → destroyed)
-- [ ] Scoring updates correctly
-- [ ] Lives decrement on collision
-- [ ] Invincibility flicker after respawn
-- [ ] Wave progression (more asteroids each wave)
-- [ ] Game over → score display → return to menu
-- [ ] Vector glow rendering on all entities
+**`create()` — Scene setup:**
+1. Reset all state (important — `create` runs every time you start a new game)
+2. Set up input: `this.input.keyboard!.createCursorKeys()` returns an object with `up`, `down`, `left`, `right`, `space`, `shift` keys. We also register space separately for firing.
+3. Create Ship at screen center, pointing up (`setAngle(-90)` because 0° is rightward)
+4. Create HUD text
+5. Call `spawnWave()` to create initial asteroids
 
-**Step 3: Commit any final fixes**
+**`update(time, delta)` — The game loop:** Phaser calls this every frame. `time` is total elapsed ms since game start, `delta` is ms since last frame (~16.7ms at 60fps).
+1. If not respawning: update ship, check fire input
+2. Update all bullets (remove dead ones)
+3. Update all asteroids
+4. Check collisions
+5. If no asteroids remain, increment wave and spawn more
 
-```bash
-git add -A
-git commit -m "chore: final verification pass"
-```
+**`fireBullet(time)` — Spawning bullets:**
+- Calculate bullet velocity from ship's angle using `velocityFromAngle`
+- Add ship's current velocity to bullet velocity (so bullets feel natural when moving)
+- Spawn at ship's nose (offset from center by ship's size in the facing direction)
+
+**`spawnWave()` — Wave generation:**
+- Number of asteroids = `INITIAL_ASTEROIDS + (wave - 1)`
+- Each spawns at a random screen edge, with minimum distance from ship
+
+**`checkBulletAsteroidCollisions()` — Nested loop collision:**
+- `this.physics.overlap(objA, objB)` returns true if their physics bodies overlap
+- On hit: add score, split asteroid, destroy bullet
+- Iterate both arrays in reverse to safely remove elements
+
+**`splitAsteroid(asteroid, index)`:**
+- Get child size from asteroid
+- If not null: spawn 2 children at same position with random velocities
+- Remove original from array and destroy
+
+**`onShipHit()`:**
+- Decrement lives, update HUD
+- If lives = 0: transition to GameOver with score
+- Otherwise: hide ship, set respawning flag, delayed call to respawn with invincibility
+
+**Update `src/main.ts`:** Import GameScene, add it to the scene array.
+
+**Verify:** This is the big payoff. Run `npm run dev` and play the game. Test every mechanic from the checklist below.
+
+**Commit.**
+
+---
+
+## Task 9: Verification & Polish
+
+**Run all tests:** `npx vitest run` — everything should pass.
+
+**Full playtest checklist:**
+- [ ] Menu → Game transition works
+- [ ] Ship rotates with left/right arrows
+- [ ] Ship thrusts with up arrow (flame visible)
+- [ ] Ship drifts when not thrusting (no friction)
+- [ ] Screen wrapping works for ship, asteroids, and bullets
+- [ ] Space fires bullets from ship's nose
+- [ ] Fire rate limiting works (can't machine-gun)
+- [ ] Bullets inherit ship's velocity
+- [ ] Bullets disappear after ~1 second
+- [ ] Bullets destroy asteroids on contact
+- [ ] Large asteroids split into 2 medium
+- [ ] Medium asteroids split into 2 small
+- [ ] Small asteroids just disappear
+- [ ] Score updates correctly (20/50/100)
+- [ ] Ship dies on asteroid contact
+- [ ] Lives decrement, HUD updates
+- [ ] Ship respawns at center with invincibility flicker
+- [ ] Can't die during invincibility
+- [ ] Game over when lives = 0
+- [ ] Game over shows final score
+- [ ] Can restart from game over
+- [ ] Clearing all asteroids spawns a new wave with more asteroids
+- [ ] Vector glow effect visible on ship and asteroids
+
+**Ask Claude** to code review your complete codebase at this point. Good things to check: are there any cleanup issues (memory leaks from timers/events), is the code organized clearly, are there any Phaser best practices you missed.
+
+**Commit** any fixes.
+
+---
+
+## Phaser Docs to Bookmark
+
+These are the Phaser 3 API pages most relevant to what you're building:
+- [Phaser.Scene](https://newdocs.phaser.io/docs/3.80.0/Phaser.Scene) — scene lifecycle
+- [Phaser.GameObjects.Container](https://newdocs.phaser.io/docs/3.80.0/Phaser.GameObjects.Container) — entity base class
+- [Phaser.GameObjects.Graphics](https://newdocs.phaser.io/docs/3.80.0/Phaser.GameObjects.Graphics) — vector drawing
+- [Phaser.Physics.Arcade](https://newdocs.phaser.io/docs/3.80.0/Phaser.Physics.Arcade) — collision detection
+- [Phaser.Input.Keyboard](https://newdocs.phaser.io/docs/3.80.0/Phaser.Input.Keyboard) — keyboard input
