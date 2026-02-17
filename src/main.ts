@@ -1,20 +1,20 @@
 import Phaser from 'phaser';
+import { GAME } from './config';
+import { BootScene } from './scenes/BootScene';
+import { MenuScene } from './scenes/MenuScene';
+import { GameOverScene } from './scenes/GameOverScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 800,
-  height: 600,
+  width: GAME.WIDTH,
+  height: GAME.HEIGHT,
   backgroundColor: '#000000',
   parent: 'game',
-  scene: {
-    create() {
-      const text = this.add.text(400, 300, 'Phaser is working!', {
-        fontSize: '24px',
-        color: '#ffffff',
-      });
-      text.setOrigin(0.5);
-    },
+  physics: {
+    default: 'arcade',
+    arcade: { debug: false },
   },
+  scene: [BootScene, MenuScene, GameOverScene],
 };
 
 new Phaser.Game(config);
