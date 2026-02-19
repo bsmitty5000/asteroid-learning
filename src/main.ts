@@ -3,8 +3,10 @@ import { GAME } from './config';
 import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
 import { GameOverScene } from './scenes/GameOverScene';
+import { GameScene } from './scenes/GameScene';
 
-const config: Phaser.Types.Core.GameConfig = {
+const config: Phaser.Types.Core.GameConfig = 
+{
   type: Phaser.AUTO,
   width: GAME.WIDTH,
   height: GAME.HEIGHT,
@@ -14,7 +16,7 @@ const config: Phaser.Types.Core.GameConfig = {
     default: 'arcade',
     arcade: { debug: false },
   },
-  scene: [BootScene, MenuScene, GameOverScene],
+  scene: [BootScene, MenuScene, GameScene, GameOverScene],
 };
 
 new Phaser.Game(config);
